@@ -27,10 +27,11 @@ jobs:
       - name: Run script
         run: python check_mare.py
 
-      - name: Save known list
+    - name: Save known list
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase
           git add known_children.json
-          git diff --staged --quiet || (git commit -m "Update MARE roster" && git push)
+          git diff --staged --quiet || git commit -m "Update MARE roster"
+          git pull --rebase
+          git push
