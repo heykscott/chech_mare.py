@@ -19,8 +19,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install libraries
-        run: pip install requests beautifulsoup4
+      - name: Install libraries & Playwright
+        run: |
+          pip install requests beautifulsoup4 playwright
+          playwright install chromium --with-deps
 
       - name: Run script
         run: python check_mare.py
