@@ -1,70 +1,54 @@
-import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 import json
 import os
 import re
+import requests
 
-# Query MARE directly for children ages 0 to 5
-url = "https://www.mareinc.org/child-gallery?minAge=0&maxAge=5"
+url = "https://www.mareinc.org/child-gallery"
 memory_file = "known_children.json"
 
-# Step 1: Load previously seen child IDs
+# Load previously seen names
 if os.path.exists(memory_file):
     with open(memory_file, "r") as f:
-        known_ids = json.load(f)
+        known_roster = json.load(f)
 else:
-    known_ids = []
+    known_roster = []
 
-# Step 2: Request the gallery page
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-}
-response = requests.get(url, headers=headers)
-soup = BeautifulSoup(response.text, "html.parser")
-
-# Step 3: Find child profile links/cards
 current_children = []
-current_ids = []
-new_children = []
 
-# Look for profile links or cards on the page
-profiles = soup.find_all("a", href=re.compile(r"/child/\d+"))
-
-seen_urls = set()
-for p in profiles:
-    link = p.get("href")
-    if link in seen_urls:
-        continue
-    seen_urls.add(link)
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page()
+    page.goto(url, wait_until="networkidle")
     
-    child_id = link.split("/")[-1]
+    # Wait for the profile cards to appear on the screen
+    page.wait_for_selector(".card, [class*='child']", timeout=15000)
     
-    # Extract text from link or surrounding container
-    container = p.find_parent("div") or p
-    text = container.get_text(" ", strip=True)
-    
-    # Parse name and age if present
-    match = re.search(r"([A-Za-z\s\'-]+?)\s*,?\s*age\s*(\d+)", text, re.IGNORECASE)
-    if match:
-        name = match.group(1).strip()
-        age = match.group(2).strip()
-        label = f"{name} - {age}"
-    else:
-        # Fallback to link text
-        link_text = p.get_text(strip=True) or f"Child {child_id}"
-        label = link_text
+    # Extract all text elements containing age information
+    cards = page.query_selector_all(".card, div[class*='profile'], div[class*='child-card']")
+    for card in cards:
+        text = card.inner_text()
+        
+        # Match pattern: Name and Age
+        match = re.search(r"([A-Za-z]+).*?(\d+)\s*(?:years?|yrs?|\n)", text, re.IGNORECASE)
+        if match:
+            name = match.group(1).strip()
+            age = int(match.group(2))
+            if age < 6:
+                entry = f"{name} - {age}"
+                if entry not in current_children:
+                    current_children.append(entry)
 
-    current_ids.append(child_id)
-    current_children.append(label)
+    browser.close()
 
-    if child_id not in known_ids:
-        new_children.append(label)
+# Identify any newly added children
+new_children = [child for child in current_children if child not in known_roster]
 
-# Step 4: Save current IDs
+# Save current list back to file
 with open(memory_file, "w") as f:
-    json.dump(current_ids, f, indent=2)
+    json.dump(current_children, f, indent=2)
 
-# Step 5: Build the notification text
+# Build daily report
 if len(new_children) > 0:
     report = f"*** NEW ADDITIONS TODAY ({len(new_children)}) ***\n"
     for child in new_children:
@@ -82,7 +66,7 @@ else:
 
 print(report)
 
-# Step 6: Send push notification via ntfy
+# Send push notification
 headers = {
     "Title": "MARE Daily Under 6 Report",
     "Click": "https://www.mareinc.org/child-gallery"
