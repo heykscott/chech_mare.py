@@ -59,19 +59,18 @@ for card in cards:
 with open(memory_file, "w") as f:
     json.dump(current_ids, f, indent=2)
 
-# Step 5: Build the daily report
-report = "MARE Daily Under 6 Report:\n"
-report += "-------------------------\n"
-report += f"Total found: {len(current_children)}\n\n"
-for child in current_children:
-    report += f"- {child}\n"
-
+# Step 5: Build the notification text
 if len(new_children) > 0:
-    report += "\n*** NEW ADDITIONS TODAY ***\n"
+    report = f"*** NEW ADDITIONS TODAY ({len(new_children)}) ***\n"
     for child in new_children:
         report += f"- {child}\n"
+    report += "\n"
 else:
-    report += "\nNo new profiles added today."
+    report = "No new profiles added today.\n\n"
+
+report += "Under 6 year olds:\n"
+for child in current_children:
+    report += f"- {child}\n"
 
 print(report)
 
