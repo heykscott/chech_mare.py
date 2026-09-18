@@ -7,7 +7,7 @@ import requests
 url = "https://www.mareinc.org/child-gallery"
 memory_file = "known_children.json"
 
-# Load previously seen names
+# Load previously seen list
 if os.path.exists(memory_file):
     with open(memory_file, "r") as f:
         known_roster = json.load(f)
@@ -17,49 +17,59 @@ else:
 current_children = []
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
-    page = browser.new_page()
-    page.goto(url, wait_until="networkidle")
-    
-    # Wait for child profile links to appear in the DOM
-    page.wait_for_selector("a[href*='/child/']", timeout=20000)
-    
-    # Find all profile links on the page
-    links = page.query_selector_all("a[href*='/child/']")
-    seen_ids = set()
+    # Launch with real browser user-agent and stealth args
+    browser = p.chromium.launch(
+        headless=True,
+        args=["--disable-blink-features=AutomationControlled"]
+    )
+    context = browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        viewport={"width": 1280, "height": 800}
+    )
+    page = context.new_page()
+    page.goto(url, wait_until="domcontentloaded")
 
+    # Give dynamic content up to 10 seconds to mount
+    page.wait_for_timeout(8000)
+
+    # Scrape all visible text on the page to identify child profile entries
+    full_text = page.inner_text("body")
+    print(f"Page title loaded: {page.title()}")
+
+    # Find profile links or cards
+    links = page.query_selector_all("a")
     for link in links:
         href = link.get_attribute("href") or ""
-        child_id = href.split("/")[-1]
+        text = link.inner_text().strip()
         
-        if not child_id or child_id in seen_ids:
-            continue
-        seen_ids.add(child_id)
-        
-        # Grab the text inside the link's card container
-        parent = link.evaluate_handle("el => el.closest('div') || el")
-        card_text = parent.inner_text()
-        
-        # Check for ages 0 through 5
-        ages = re.findall(r"\b(\d+)\s*(?:years?|yrs?|yo|\b)", card_text, re.IGNORECASE)
-        name_match = re.search(r"([A-Za-z]+)", card_text)
-        name = name_match.group(1) if name_match else f"Child {child_id}"
+        # Match gallery profile cards
+        if "/child" in href or "/profile" in href:
+            match = re.search(r"([A-Za-z]+).*?(\d+)", text)
+            if match:
+                name = match.group(1).strip()
+                age = int(match.group(2))
+                if age < 6:
+                    entry = f"{name} - {age}"
+                    if entry not in current_children:
+                        current_children.append(entry)
 
-        # Match any age under 6 or baby/infant keywords
-        under_6 = any(int(a) < 6 for a in ages) or "baby" in card_text.lower() or "infant" in card_text.lower()
-        
-        if under_6:
-            age_str = ages[0] if ages else "under 6"
-            entry = f"{name} - {age_str}"
-            if entry not in current_children:
-                current_children.append(entry)
+    # Fallback: scan regex against rendered body text for patterns like 'Paul, age 1' or 'Viridiana, 4'
+    if not current_children:
+        matches = re.findall(r"([A-Z][a-z]+)\s*(?:,|\s-|\sis)?\s*(?:age\s*)?(\d+)\s*(?:years?|yrs?|yo)", full_text, re.IGNORECASE)
+        for name, age_str in matches:
+            age = int(age_str)
+            if age < 6 and name not in ["MARE", "Boston", "Search", "Filter", "Age"]:
+                entry = f"{name} - {age}"
+                if entry not in current_children:
+                    current_children.append(entry)
 
+    print(f"Discovered children under 6: {current_children}")
     browser.close()
 
-# Identify any newly added children
-new_children = [child for child in current_children if child not in known_roster]
+# Identify new children
+new_children = [c for c in current_children if c not in known_roster]
 
-# Save current list back to file
+# Save current list
 with open(memory_file, "w") as f:
     json.dump(current_children, f, indent=2)
 
