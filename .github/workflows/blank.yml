@@ -2,9 +2,8 @@ name: Daily MARE Check
 
 on:
   schedule:
-    # Runs daily at 15:00 UTC (11:00 AM EDT)
     - cron: '0 15 * * *'
-  workflow_dispatch: # Button to run manually whenever you want
+  workflow_dispatch:
 
 jobs:
   run-scraper:
@@ -16,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: setup-python@v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
