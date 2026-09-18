@@ -75,7 +75,5 @@ else:
 
 print(report)
 
-# Step 6: Send Discord notification if a webhook is configured
-webhook_url = os.environ.get("DISCORD_WEBHOOK")
-if webhook_url:
-    requests.post(webhook_url, json={"content": report})  
+# Step 6: Send push notification to phone via ntfy
+requests.post("https://ntfy.sh/katie-mare-alerts-2026", data=report.encode("utf-8"))
