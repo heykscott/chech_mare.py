@@ -21,23 +21,38 @@ with sync_playwright() as p:
     page = browser.new_page()
     page.goto(url, wait_until="networkidle")
     
-    # Wait for the profile cards to appear on the screen
-    page.wait_for_selector(".card, [class*='child']", timeout=15000)
+    # Wait for child profile links to appear in the DOM
+    page.wait_for_selector("a[href*='/child/']", timeout=20000)
     
-    # Extract all text elements containing age information
-    cards = page.query_selector_all(".card, div[class*='profile'], div[class*='child-card']")
-    for card in cards:
-        text = card.inner_text()
+    # Find all profile links on the page
+    links = page.query_selector_all("a[href*='/child/']")
+    seen_ids = set()
+
+    for link in links:
+        href = link.get_attribute("href") or ""
+        child_id = href.split("/")[-1]
         
-        # Match pattern: Name and Age
-        match = re.search(r"([A-Za-z]+).*?(\d+)\s*(?:years?|yrs?|\n)", text, re.IGNORECASE)
-        if match:
-            name = match.group(1).strip()
-            age = int(match.group(2))
-            if age < 6:
-                entry = f"{name} - {age}"
-                if entry not in current_children:
-                    current_children.append(entry)
+        if not child_id or child_id in seen_ids:
+            continue
+        seen_ids.add(child_id)
+        
+        # Grab the text inside the link's card container
+        parent = link.evaluate_handle("el => el.closest('div') || el")
+        card_text = parent.inner_text()
+        
+        # Check for ages 0 through 5
+        ages = re.findall(r"\b(\d+)\s*(?:years?|yrs?|yo|\b)", card_text, re.IGNORECASE)
+        name_match = re.search(r"([A-Za-z]+)", card_text)
+        name = name_match.group(1) if name_match else f"Child {child_id}"
+
+        # Match any age under 6 or baby/infant keywords
+        under_6 = any(int(a) < 6 for a in ages) or "baby" in card_text.lower() or "infant" in card_text.lower()
+        
+        if under_6:
+            age_str = ages[0] if ages else "under 6"
+            entry = f"{name} - {age_str}"
+            if entry not in current_children:
+                current_children.append(entry)
 
     browser.close()
 
