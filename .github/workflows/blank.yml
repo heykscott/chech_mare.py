@@ -23,11 +23,9 @@ jobs:
         run: pip install requests beautifulsoup4
 
       - name: Run script
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: python check_mare.py
 
-     - name: Save known list
+      - name: Save known list
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
